@@ -10,7 +10,7 @@ class Config:
         self.config = {
             # Dataset parameters
             'dataset': {
-                'root_dir': 'datasets/maps',
+                'root_dir': 'sat2route/datasets/maps',
                 'target_shape': (256, 256),
                 'test_size': 0.2,
                 'seed': 42
