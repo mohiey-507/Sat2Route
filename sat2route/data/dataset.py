@@ -30,9 +30,9 @@ class MapsDataset(Dataset):
         self.transform = v2.Compose([
             v2.RandomHorizontalFlip(),
             v2.RandomVerticalFlip(),
-            v2.RandomRotation([0, 90, 180, 270])
+            v2.RandomRotation(degrees=90)
         ]) if is_train else None
-    
+
     def __len__(self):
         return len(self.image_paths)
     
