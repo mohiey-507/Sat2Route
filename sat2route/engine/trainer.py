@@ -122,6 +122,19 @@ class Trainer:
         self.cur_step = 0
         self.display_step = display_step
 
+    def show_tensor_images(self, image_tensor, num_images=4, size=(3, 256, 256)):
+        '''
+        Function for visualizing images: Given a tensor of images, number of images, and
+        size per image, plots and prints the images in an uniform grid.
+        '''
+        image_shifted = image_tensor
+        image_unflat = image_shifted.detach().cpu().view(-1, *size)
+        image_grid = make_grid(image_unflat[:num_images], nrow=4)
+        plt.figure(figsize=(5, 5))
+        plt.imshow(image_grid.permute(1, 2, 0).squeeze())
+        plt.axis('off')
+        plt.show()
+
     def train_step(self, batch) -> dict:
         """Execute a single training step (generator + discriminator) on a batch.
         
@@ -173,3 +186,206 @@ class Trainer:
             'disc': disc_losses,
             'gen': gen_losses
         }
+
+    def train_epoch(self):
+        """Train the model for one epoch.
+        
+        Returns:
+            dict: Dictionary with average losses
+        """
+        self.generator.train()
+        self.discriminator.train()
+        
+        epoch_losses = {
+            'disc': {'total': 0, 'real': 0, 'fake': 0},
+            'gen': {'total': 0, 'adv': 0, 'recon': 0}
+        }
+        
+        pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader))
+        pbar.set_description(f"Epoch {self.current_epoch+1}/{self.epochs}")
+        
+        for i, batch in pbar:
+            batch_losses = self.train_step(batch)
+            
+            # Update epoch losses
+            for model_type in ['disc', 'gen']:
+                for loss_type, loss_value in batch_losses[model_type].items():
+                    epoch_losses[model_type][loss_type] += loss_value.item()
+            
+            # Update progress bar
+            pbar.set_postfix({
+                'G_loss': f"{batch_losses['gen']['total'].item():.4f}",
+                'D_loss': f"{batch_losses['disc']['total'].item():.4f}"
+            })
+        
+        # Calculate averages
+        n_batches = len(self.train_loader)
+        for model_type in ['disc', 'gen']:
+            for loss_type in epoch_losses[model_type]:
+                epoch_losses[model_type][loss_type] /= n_batches
+        
+        self.logger.info(
+            f"Epoch {self.current_epoch+1}/{self.epochs} | "
+            f"G_loss: {epoch_losses['gen']['total']:.4f} | "
+            f"D_loss: {epoch_losses['disc']['total']:.4f}"
+        )
+        
+        return epoch_losses
+
+    def validate(self):
+        """Validate the model on the validation set.
+        
+        Returns:
+            dict: Dictionary with validation losses
+            float: Total validation loss
+            list: Samples for visualization [condition, target, generated]
+        """
+        self.generator.eval()
+        self.discriminator.eval()
+        
+        val_losses = {
+            'disc': {'total': 0, 'real': 0, 'fake': 0},
+            'gen': {'total': 0, 'adv': 0, 'recon': 0}
+        }
+        
+        samples = []
+        
+        with torch.no_grad():
+            pbar = tqdm(enumerate(self.val_loader), total=len(self.val_loader))
+            pbar.set_description("Validation")
+            
+            for i, batch in pbar:
+                condition, target = batch
+                condition = condition.to(self.device)
+                target = target.to(self.device)
+                
+                # Generate fake images
+                fake = self.generator(condition)
+                
+                # Calculate discriminator loss
+                disc_losses = self.loss_fn(self.discriminator, target, condition, 
+                                    mode='discriminator', gen=self.generator)
+                
+                # Calculate generator loss
+                gen_losses = self.loss_fn(self.generator, target, condition, 
+                                    mode='generator', disc=self.discriminator)
+                
+                # Update validation losses
+                for model_type in ['disc', 'gen']:
+                    for loss_type, loss_value in (
+                        disc_losses.items() if model_type == 'disc' else gen_losses.items()
+                    ):
+                        if loss_type in val_losses[model_type]:
+                            val_losses[model_type][loss_type] += loss_value.item()
+                
+                # Save first batch for visualization
+                if i == 0:
+                    samples = [condition[:4], target[:4], fake[:4]]
+        
+        # Calculate averages
+        n_batches = len(self.val_loader)
+        for model_type in ['disc', 'gen']:
+            for loss_type in val_losses[model_type]:
+                val_losses[model_type][loss_type] /= n_batches
+        
+        # Calculate total loss (generator loss)
+        total_val_loss = val_losses['gen']['total']
+        
+        self.logger.info(
+            f"Validation | "
+            f"G_loss: {val_losses['gen']['total']:.4f} | "
+            f"D_loss: {val_losses['disc']['total']:.4f}"
+        )
+        
+        return val_losses, total_val_loss, samples
+
+    def save_checkpoint(self, epoch, val_loss, is_best=False):
+        checkpoint = {
+            'epoch': epoch,
+            'generator_state_dict': self.generator.state_dict(),
+            'discriminator_state_dict': self.discriminator.state_dict(),
+            'gen_optimizer_state_dict': self.gen_optimizer.state_dict(),
+            'disc_optimizer_state_dict': self.disc_optimizer.state_dict(),
+            'val_loss': val_loss,
+            'config': default_config.config
+        }
+        
+        # Save latest checkpoint
+        checkpoint_path = os.path.join(self.checkpoint_dir, 'latest_checkpoint.pth')
+        torch.save(checkpoint, checkpoint_path)
+        self.logger.info(f"Saved checkpoint at {checkpoint_path}")
+        
+        # Save epoch checkpoint
+        epoch_checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
+        torch.save(checkpoint, epoch_checkpoint_path)
+        
+        # Save best model if needed
+        if is_best:
+            best_model_path = os.path.join(self.checkpoint_dir, 'best_model.pth')
+            torch.save(checkpoint, best_model_path)
+            self.logger.info(f"New best model saved with val_loss: {val_loss:.4f}")
+    
+    def load_checkpoint(self, checkpoint_path):
+        if not os.path.exists(checkpoint_path):
+            self.logger.warning(f"Checkpoint {checkpoint_path} not found. Starting from scratch.")
+            return 0
+        
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        self.generator.load_state_dict(checkpoint['generator_state_dict'])
+        self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+        self.gen_optimizer.load_state_dict(checkpoint['gen_optimizer_state_dict'])
+        self.disc_optimizer.load_state_dict(checkpoint['disc_optimizer_state_dict'])
+        
+        self.best_val_loss = checkpoint['val_loss']
+        epoch = checkpoint['epoch']
+        
+        self.logger.info(f"Loaded checkpoint from epoch {epoch} with val_loss: {self.best_val_loss:.4f}")
+        return epoch
+    
+    def fit(self, epochs=None, resume_from=None):
+        """Train the model for multiple epochs.
+        
+        Args:
+            epochs: Number of epochs to train for. If None, use config value.
+            resume_from: Checkpoint path to resume from. If None, start from scratch.
+            
+        Returns:
+            dict: Dictionary with training history
+        """
+        if epochs is not None:
+            self.epochs = epochs
+        
+        # Resume from checkpoint if specified
+        start_epoch = 0
+        if resume_from is not None:
+            start_epoch = self.load_checkpoint(resume_from)
+            
+        self.current_epoch = start_epoch
+        
+        history = {
+            'train_losses': [],
+            'val_losses': [],
+        }
+        
+        self.logger.info(f"Starting training for {self.epochs} epochs")
+        for epoch in range(start_epoch, self.epochs):
+            self.current_epoch = epoch
+            
+            # Train
+            train_losses = self.train_epoch()
+            history['train_losses'].append(train_losses)
+            
+            # Validate
+            val_losses, total_val_loss, samples = self.validate()
+            history['val_losses'].append(val_losses)
+            
+            # Save checkpoint
+            is_best = total_val_loss < self.best_val_loss
+            if is_best:
+                self.best_val_loss = total_val_loss
+                
+            self.save_checkpoint(epoch + 1, total_val_loss, is_best)
+        
+        self.logger.info("Training completed!")
+        return history
