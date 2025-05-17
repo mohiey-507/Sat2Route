@@ -299,7 +299,7 @@ class Trainer:
         
         return val_losses, total_val_loss, samples
 
-    def save_checkpoint(self, epoch, val_loss, is_best=False):
+    def save_checkpoint(self, epoch, val_loss, is_best=False, is_final=False):
         checkpoint = {
             'epoch': epoch,
             'generator_state_dict': self.generator.state_dict(),
@@ -310,20 +310,26 @@ class Trainer:
             'config': default_config.config
         }
         
-        # Save latest checkpoint
+        # Save latest checkpoint (for resuming training if needed)
         checkpoint_path = os.path.join(self.checkpoint_dir, 'latest_checkpoint.pth')
         torch.save(checkpoint, checkpoint_path)
-        self.logger.info(f"Saved checkpoint at {checkpoint_path}")
         
-        # Save epoch checkpoint
-        epoch_checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
-        torch.save(checkpoint, epoch_checkpoint_path)
-        
-        # Save best model if needed
+        # Handle best model
+        best_model_path = os.path.join(self.checkpoint_dir, 'best_model.pth')
         if is_best:
-            best_model_path = os.path.join(self.checkpoint_dir, 'best_model.pth')
             torch.save(checkpoint, best_model_path)
             self.logger.info(f"New best model saved with val_loss: {val_loss:.4f}")
+        
+        # Handle final model
+        if is_final:
+            final_model_path = os.path.join(self.checkpoint_dir, 'final_model.pth')
+            torch.save(checkpoint, final_model_path)
+            self.logger.info(f"Final model saved with val_loss: {val_loss:.4f}")
+            
+            # If the final model is also the best model, remove the redundant best model file
+            if is_best and os.path.exists(best_model_path):
+                os.remove(best_model_path)
+                self.logger.info("Removed redundant best_model.pth as it is identical to final_model.pth")
     
     def load_checkpoint(self, checkpoint_path):
         if not os.path.exists(checkpoint_path):
@@ -380,12 +386,16 @@ class Trainer:
             val_losses, total_val_loss, samples = self.validate()
             history['val_losses'].append(val_losses)
             
-            # Save checkpoint
+            # Determine if this is the best model so far
             is_best = total_val_loss < self.best_val_loss
             if is_best:
                 self.best_val_loss = total_val_loss
+            
+            # Check if this is the final epoch
+            is_final = (epoch == self.epochs - 1)
                 
-            self.save_checkpoint(epoch + 1, total_val_loss, is_best)
+            # Save checkpoint (only latest, best, and final)
+            self.save_checkpoint(epoch + 1, total_val_loss, is_best, is_final)
         
         self.logger.info("Training completed!")
         return history
