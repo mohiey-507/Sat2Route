@@ -1,5 +1,3 @@
-import os
-import sys
 import logging
 from pathlib import Path
 
@@ -10,23 +8,26 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
+from torch.amp import GradScaler, autocast
 
 from sat2route.config import default_config
 from sat2route.models import Generator, Discriminator
 from sat2route.losses.loss import Loss
 from sat2route.data.data_loader import get_dataloaders
 
-log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
-os.makedirs(log_dir, exist_ok=True)
+# Use pathlib for robust path handling
+log_dir = Path(__file__).resolve().parent.parent.parent / 'logs'
+log_dir.mkdir(exist_ok=True)
 
 def get_logger(name):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        log_file = os.path.join(log_dir, f'{name}.log')
+        log_file = log_dir / f'{name}.log'
         file_handler = logging.FileHandler(log_file, mode='a')
         file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logger.addHandler(file_handler)
+        
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logger.addHandler(console_handler)
@@ -105,6 +106,10 @@ class Trainer:
         # Initialize loss function
         self.loss_fn = loss_fn if loss_fn is not None else Loss(lambda_recon=self.lambda_recon).to(self.device)
         
+        # Initialize GradScalers for AMP
+        self.gen_scaler = GradScaler()
+        self.disc_scaler = GradScaler()
+        
         # Initialize data loaders if not provided
         if train_loader is None or val_loader is None:
             self.train_loader, self.val_loader = get_dataloaders()
@@ -113,9 +118,9 @@ class Trainer:
             self.val_loader = val_loader
         
         # Setup checkpointing
-        self.checkpoint_dir = checkpoint_dir
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        self.logger.info(f"Checkpoint directory: {os.path.abspath(checkpoint_dir)}")
+        self.checkpoint_dir = Path(checkpoint_dir)
+        self.checkpoint_dir.mkdir(exist_ok=True)
+        self.logger.info(f"Checkpoint directory: {self.checkpoint_dir.resolve()}")
 
         self.best_val_loss = float('inf')
         self.current_epoch = 0
@@ -143,7 +148,7 @@ class Trainer:
                 condition: Satellite image [B, 3, H, W]
                 target: Map image [B, 3, H, W]
                 
-    Returns:
+        Returns:
             dict: Dictionary with all loss components
         """
         condition, target = batch
@@ -152,19 +157,24 @@ class Trainer:
         
         # Train discriminator
         self.disc_optimizer.zero_grad()
-        disc_losses = self.loss_fn(self.discriminator, target, condition, mode='discriminator', gen=self.generator)
-        disc_losses['total'].backward()
-        self.disc_optimizer.step()
+        with autocast(device_type=self.device.type):
+            disc_losses = self.loss_fn(self.discriminator, target, condition, mode='discriminator', gen=self.generator)
+        self.disc_scaler.scale(disc_losses['total']).backward()
+        self.disc_scaler.step(self.disc_optimizer)
+        self.disc_scaler.update()
         
         # Train generator
         self.gen_optimizer.zero_grad()
-        gen_losses = self.loss_fn(self.generator, target, condition, mode='generator', disc=self.discriminator)
-        gen_losses['total'].backward()
-        self.gen_optimizer.step()
+        with autocast(device_type=self.device.type):
+            gen_losses = self.loss_fn(self.generator, target, condition, mode='generator', disc=self.discriminator)
+        self.gen_scaler.scale(gen_losses['total']).backward()
+        self.gen_scaler.step(self.gen_optimizer)
+        self.gen_scaler.update()
         
         # Generate fake image for visualization
-        with torch.no_grad():
-            fake = self.generator(condition)
+        with torch.inference_mode():
+            with autocast(device_type=self.device.type):
+                fake = self.generator(condition)
         
         # Visualization
         if self.display_step > 0 and self.cur_step % self.display_step == 0:
@@ -174,9 +184,7 @@ class Trainer:
             print(f"\nStep {self.cur_step}: Visualization of condition (input), target (real), and generated (fake) images")
             
             self.show_tensor_images(condition, num_images=4, size=(input_dim, target_shape, target_shape))
-            
             self.show_tensor_images(target, num_images=4, size=(real_dim, target_shape, target_shape))
-            
             self.show_tensor_images(fake, num_images=4, size=(real_dim, target_shape, target_shape))
         
         # Increment step counter
@@ -250,7 +258,7 @@ class Trainer:
         
         samples = []
         
-        with torch.no_grad():
+        with torch.inference_mode():
             pbar = tqdm(enumerate(self.val_loader), total=len(self.val_loader))
             pbar.set_description("Validation")
             
@@ -259,16 +267,17 @@ class Trainer:
                 condition = condition.to(self.device)
                 target = target.to(self.device)
                 
-                # Generate fake images
-                fake = self.generator(condition)
-                
-                # Calculate discriminator loss
-                disc_losses = self.loss_fn(self.discriminator, target, condition, 
-                                    mode='discriminator', gen=self.generator)
-                
-                # Calculate generator loss
-                gen_losses = self.loss_fn(self.generator, target, condition, 
-                                    mode='generator', disc=self.discriminator)
+                with autocast(device_type=self.device.type):
+                    # Generate fake images
+                    fake = self.generator(condition)
+                    
+                    # Calculate discriminator loss
+                    disc_losses = self.loss_fn(self.discriminator, target, condition, 
+                                        mode='discriminator', gen=self.generator)
+                    
+                    # Calculate generator loss
+                    gen_losses = self.loss_fn(self.generator, target, condition, 
+                                        mode='generator', disc=self.discriminator)
                 
                 # Update validation losses
                 for model_type in ['disc', 'gen']:
@@ -310,29 +319,30 @@ class Trainer:
             'config': default_config.config
         }
         
-        # Save latest checkpoint (for resuming training if needed)
-        checkpoint_path = os.path.join(self.checkpoint_dir, 'latest_checkpoint.pth')
-        torch.save(checkpoint, checkpoint_path)
+        # Save latest checkpoint
+        latest_checkpoint_path = self.checkpoint_dir / 'latest_checkpoint.pth'
+        torch.save(checkpoint, latest_checkpoint_path)
         
         # Handle best model
-        best_model_path = os.path.join(self.checkpoint_dir, 'best_model.pth')
         if is_best:
+            best_model_path = self.checkpoint_dir / 'best_model.pth'
             torch.save(checkpoint, best_model_path)
             self.logger.info(f"New best model saved with val_loss: {val_loss:.4f}")
         
         # Handle final model
         if is_final:
-            final_model_path = os.path.join(self.checkpoint_dir, 'final_model.pth')
+            final_model_path = self.checkpoint_dir / 'final_model.pth'
             torch.save(checkpoint, final_model_path)
             self.logger.info(f"Final model saved with val_loss: {val_loss:.4f}")
             
-            # If the final model is also the best model, remove the redundant best model file
-            if is_best and os.path.exists(best_model_path):
-                os.remove(best_model_path)
+            # If the final model is also the best, remove the redundant best_model.pth
+            if is_best and 'best_model_path' in locals() and best_model_path.exists():
+                best_model_path.unlink()
                 self.logger.info("Removed redundant best_model.pth as it is identical to final_model.pth")
     
     def load_checkpoint(self, checkpoint_path):
-        if not os.path.exists(checkpoint_path):
+        checkpoint_path = Path(checkpoint_path)
+        if not checkpoint_path.exists():
             self.logger.warning(f"Checkpoint {checkpoint_path} not found. Starting from scratch.")
             return 0
         
