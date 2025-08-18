@@ -172,7 +172,7 @@ class Trainer:
         self.gen_scaler.update()
         
         # Generate fake image for visualization
-        with torch.inference_mode():
+        with torch.no_grad():
             with autocast(device_type=self.device.type):
                 fake = self.generator(condition)
         
