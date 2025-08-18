@@ -258,7 +258,7 @@ class Trainer:
         
         samples = []
         
-        with torch.inference_mode():
+        with torch.no_grad():
             pbar = tqdm(enumerate(self.val_loader), total=len(self.val_loader))
             pbar.set_description("Validation")
             
