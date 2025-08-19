@@ -171,13 +171,11 @@ class Trainer:
         self.gen_scaler.step(self.gen_optimizer)
         self.gen_scaler.update()
         
-        # Generate fake image for visualization
-        with torch.no_grad():
-            with autocast(device_type=self.device.type):
-                fake = self.generator(condition)
-        
         # Visualization
         if self.display_step > 0 and self.cur_step % self.display_step == 0:
+            with torch.no_grad():
+                with autocast(device_type=self.device.type):
+                    fake = self.generator(condition)
             input_dim = condition.shape[1]
             real_dim = target.shape[1]
             target_shape = condition.shape[2]
@@ -185,7 +183,7 @@ class Trainer:
             
             self.show_tensor_images(condition, num_images=4, size=(input_dim, target_shape, target_shape))
             self.show_tensor_images(target, num_images=4, size=(real_dim, target_shape, target_shape))
-            self.show_tensor_images(fake, num_images=4, size=(real_dim, target_shape, target_shape))
+            self.show_tensor_images(fake.to(torch.float32), num_images=4, size=(real_dim, target_shape, target_shape))
         
         # Increment step counter
         self.cur_step += 1
