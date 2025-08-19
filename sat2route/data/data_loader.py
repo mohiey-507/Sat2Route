@@ -1,26 +1,32 @@
+import torch
 from torch.utils.data import DataLoader
 from .dataset import MapsDataset
-from ..config import default_config
+from ..config import get_config
 
 def get_dataloaders(
+    config: dict = None,
     root_dir: str = None, 
     batch_size: int = None, 
     target_shape: tuple = None, 
     num_workers: int = None, 
     test_size: float = None, 
-    seed: int = None
+    seed: int = None,
+    pin_memory: bool = True
 ):
-    # Use config values as defaults
-    config_dataset = default_config['dataset']
-    config_loader = default_config['dataloader']
+    config = config or get_config()
+    cfg_ds = config['dataset']
+    cfg_dl = config['dataloader']
 
-    root_dir = root_dir or config_dataset['root_dir']
-    target_shape = target_shape or config_dataset['target_shape']
-    test_size = test_size or config_dataset['test_size']
-    seed = seed or config_dataset['seed']
+    root_dir = root_dir or cfg_ds['root_dir']
+    target_shape = target_shape or cfg_ds['target_shape']
+    test_size = test_size or cfg_ds['test_size']
+    seed = seed or cfg_ds['seed']
 
-    batch_size = batch_size or config_loader['batch_size']
-    num_workers = num_workers or config_loader['num_workers']
+    batch_size = batch_size or cfg_dl['batch_size']
+    num_workers = num_workers or cfg_dl['num_workers']
+
+    g = torch.Generator()
+    g.manual_seed(seed)
 
     # Create datasets
     train_dataset = MapsDataset(
@@ -43,7 +49,9 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        drop_last=True
+        drop_last=True,
+        pin_memory=pin_memory,
+        generator=g
     )
 
     val_loader = DataLoader(
@@ -51,6 +59,8 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
+        pin_memory=pin_memory,
+        generator=g
     )
 
     return train_loader, val_loader
