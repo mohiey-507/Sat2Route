@@ -7,14 +7,14 @@ class Discriminator(nn.Module):
     PatchGAN discriminator for image-to-image translation tasks
     Classifies if image patches are real or fake rather than the entire image
     """
-    def __init__(self, in_ch: int, hidden_ch: int = 32, depth: int = 4):
+    def __init__(self, in_ch: int, hidden_ch: int = 32, depth: int = 4, norm_affine: bool = False):
         super().__init__()
         
         self.in_conv = nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
         ch = hidden_ch
         self.contracts = nn.ModuleList()
         for _ in range(depth):
-            self.contracts.append(ContractBlock(ch, use_bn=True, use_dropout=False))
+            self.contracts.append(ContractBlock(ch, use_norm=True, use_dropout=False, norm_affine=norm_affine))
             ch *= 2
         self.out_conv = nn.Conv2d(ch, 1, kernel_size=1)
 

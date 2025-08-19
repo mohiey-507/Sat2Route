@@ -12,7 +12,7 @@ class UNet(nn.Module):
         ch = hidden_ch
         self.contracts = nn.ModuleList()
         for i in range(depth):
-            self.contracts.append(ContractBlock(ch, use_bn=True, use_dropout=False))
+            self.contracts.append(ContractBlock(ch, use_norm=True, use_dropout=False))
             ch *= 2
 
         # Expanding path
@@ -20,11 +20,10 @@ class UNet(nn.Module):
         self.expands = nn.ModuleList()
         for i in range(depth):
             use_dropout = i < ((depth + 2) // 3)
-            self.expands.append(ExpandBlock(expand_ch, use_bn=True, use_dropout=use_dropout))
+            self.expands.append(ExpandBlock(expand_ch, use_norm=True, use_dropout=use_dropout))
             expand_ch //= 2
 
         self.out_conv = nn.Conv2d(hidden_ch, out_ch, kernel_size=1)
-        self.sigmoid = nn.Sigmoid()
 
         self._init_weights()
 
@@ -37,7 +36,7 @@ class UNet(nn.Module):
         for expand in self.expands:
             x = expand(x, skips.pop())
         x = self.out_conv(x)
-        return self.sigmoid(x)
+        return x
 
     def _init_weights(self):
         for m in self.modules():
