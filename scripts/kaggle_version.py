@@ -27,72 +27,45 @@ sys.path.insert(0, str(Path.cwd()))
 
 from sat2route import (
     Generator, Discriminator, Trainer, Loss,
-    get_dataloaders, default_config
+    get_dataloaders, get_config
 )
 
-# Update the dataset path in the config to point to the correct location
-print("Updating dataset configuration for Kaggle environment...")
-default_config['dataset']['root_dir'] = 'sat2route/datasets/maps'
-print(f"Dataset root directory set to: {default_config['dataset']['root_dir']}")
-
-print("Setting up training configuration...")
-
 # %% [code] 
-# Parse arguments with default values for Kaggle
 def get_kaggle_config():
-    # Training parameters
-    epochs = 100
-    batch_size = 32
-    lr = 2e-4
-    lambda_recon = 180
+    override_dict = {
+        'dataset': {
+            'root_dir': 'datasets/maps',
+        },
+        'dataloader': {
+            'batch_size': 32,
+            'num_workers': 4,
+        },
+        'training': {
+            'device': 'cuda',
+            'lambda_recon': 180.0,
+            'epochs': 10,
+        }
+    }
+    config = get_config(override_dict)
     
-    # Device configuration - use GPU if available
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Check for multiple GPUs
-    ngpu = torch.cuda.device_count()
-    if device.type == 'cuda' and ngpu > 1:
-        print(f"Using {ngpu} GPUs!")
-        # Scale batch size by the number of GPUs
-        batch_size *= ngpu
-    else:
-        print(f"Using device: {device}")
-    
-    # Model parameters
-    g_hidden_channels = 32
-    d_hidden_channels = 8
-    g_depth = 6
-    d_depth = 4
-    
-    # Checkpoint handling
     checkpoint_dir = 'checkpoints'
     os.makedirs(checkpoint_dir, exist_ok=True)
     
     # Visualization frequency
     display_step = 50
     
-    # Update config
-    config = default_config
-    config['training']['epochs'] = epochs
-    config['training']['lr'] = lr
-    config['training']['lambda_recon'] = lambda_recon
-    config['dataloader']['batch_size'] = batch_size
-    config['model']['generator']['hidden_channels'] = g_hidden_channels
-    config['model']['generator']['depth'] = g_depth
-    config['model']['discriminator']['hidden_channels'] = d_hidden_channels
-    config['model']['discriminator']['depth'] = d_depth
-    
-    return config, device, checkpoint_dir, display_step
+    return config, checkpoint_dir, display_step
 
 # %% [code]
 def train_model():
     """Set up and train the Sat2Route model in Kaggle environment"""
     
     # Get configuration for Kaggle
-    config, device, checkpoint_dir, display_step = get_kaggle_config()
+    config, checkpoint_dir, display_step = get_kaggle_config()
+    device = torch.device(config['training']['device'])
     
     print("Setting up dataloaders...")
-    train_loader, val_loader = get_dataloaders()
+    train_loader, val_loader = get_dataloaders(config)
     
     # Print training info
     print("\n--- Training Configuration ---")
@@ -146,6 +119,7 @@ def train_model():
     # Initialize trainer
     print("Setting up trainer...")
     trainer = Trainer(
+        config=config,
         generator=generator,
         discriminator=discriminator,
         train_loader=train_loader,
