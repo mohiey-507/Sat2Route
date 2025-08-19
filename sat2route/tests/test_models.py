@@ -6,10 +6,11 @@ import unittest
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sat2route.models import Generator, Discriminator
-from sat2route.config import default_config
+from sat2route.config import get_config
 
 class TestUNetGenerator(unittest.TestCase):
     def setUp(self):
+        default_config = get_config()
         self.gen_config = default_config['model']['generator']
         self.dataset_config = default_config['dataset']
         self.in_channels = self.gen_config['in_channels']
