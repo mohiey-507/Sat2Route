@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
 from torch.amp import GradScaler, autocast
 
-from sat2route.config import default_config
+from sat2route.config import get_config
 from sat2route.models import Generator, Discriminator
 from sat2route.losses.loss import Loss
 from sat2route.data.data_loader import get_dataloaders
@@ -36,6 +36,7 @@ def get_logger(name):
 class Trainer:
     def __init__(
         self,
+        config: dict = None,
         generator: nn.Module = None,
         discriminator: nn.Module = None,
         train_loader: DataLoader = None,
@@ -53,6 +54,8 @@ class Trainer:
         self.logger.info(f"Initializing trainer")
 
         # Get training config
+        default_config = config or get_config()
+        self.config = default_config
         self.training_config = default_config['training']
         self.lambda_recon = self.training_config['lambda_recon']
         self.epochs = self.training_config['epochs']
@@ -317,7 +320,7 @@ class Trainer:
             'gen_optimizer_state_dict': self.gen_optimizer.state_dict(),
             'disc_optimizer_state_dict': self.disc_optimizer.state_dict(),
             'val_loss': val_loss,
-            'config': default_config.config
+            'config': self.config
         }
         
         # Save latest checkpoint
