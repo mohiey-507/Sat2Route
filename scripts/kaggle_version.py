@@ -1,27 +1,14 @@
 # %% [code]
 # Clone the repository
-!git clone https://github.com/mohiey-507/Sat2Route
+!git clone -b amp https://github.com/mohiey-507/Sat2Route
 %cd Sat2Route
 
 # %% [code]
 # Download and extract dataset
-# Create datasets directory
-!mkdir -p sat2route/datasets
-
-# Download the dataset
-!wget -q -N http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/maps.tar.gz -O sat2route/datasets/maps.tar.gz
-print("Downloaded maps dataset")
-
-# Extract the dataset
-!tar -zxf sat2route/datasets/maps.tar.gz -C sat2route/datasets/
-print("Extracted dataset")
-
-# Remove the tar file
-!rm sat2route/datasets/maps.tar.gz
-
-print("Dataset downloaded and extracted to datasets/maps directory.")
-print("Current working directory:")
-!pwd
+!mkdir -p datasets
+!wget -q -N http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/maps.tar.gz -O datasets/maps.tar.gz
+!tar -zxf datasets/maps.tar.gz -C datasets/
+!rm datasets/maps.tar.gz
 
 # %% [code]
 # Set up Python path for imports
@@ -29,20 +16,19 @@ import os
 import sys
 import torch
 import matplotlib.pyplot as plt
-from pathlib import Path
+
+# Ignore warnings
+import warnings
+warnings.filterwarnings('ignore')
 
 # Add project to path
+from pathlib import Path
 sys.path.insert(0, str(Path.cwd()))
 
 from sat2route import (
     Generator, Discriminator, Trainer, Loss,
     get_dataloaders, default_config
 )
-
-# Enable Kaggle tqdm
-from tqdm.notebook import tqdm
-import warnings
-warnings.filterwarnings('ignore')
 
 # Update the dataset path in the config to point to the correct location
 print("Updating dataset configuration for Kaggle environment...")
@@ -51,18 +37,26 @@ print(f"Dataset root directory set to: {default_config['dataset']['root_dir']}")
 
 print("Setting up training configuration...")
 
-# %% [code]
+# %% [code] 
 # Parse arguments with default values for Kaggle
 def get_kaggle_config():
     # Training parameters
-    epochs = 10
-    batch_size = 16
+    epochs = 100
+    batch_size = 32
     lr = 2e-4
-    lambda_recon = 200.0
+    lambda_recon = 180
     
     # Device configuration - use GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    
+    # Check for multiple GPUs
+    ngpu = torch.cuda.device_count()
+    if device.type == 'cuda' and ngpu > 1:
+        print(f"Using {ngpu} GPUs!")
+        # Scale batch size by the number of GPUs
+        batch_size *= ngpu
+    else:
+        print(f"Using device: {device}")
     
     # Model parameters
     g_hidden_channels = 32
@@ -75,7 +69,7 @@ def get_kaggle_config():
     os.makedirs(checkpoint_dir, exist_ok=True)
     
     # Visualization frequency
-    display_step = 250
+    display_step = 50
     
     # Update config
     config = default_config
@@ -128,6 +122,12 @@ def train_model():
         depth=config['model']['discriminator']['depth']
     )
     
+    # Apply DataParallel if multiple GPUs are available
+    if device.type == 'cuda' and torch.cuda.device_count() > 1:
+        print("Applying torch.nn.DataParallel to models...")
+        generator = torch.nn.DataParallel(generator)
+        discriminator = torch.nn.DataParallel(discriminator)
+    
     # Initialize optimizer and loss function
     gen_optimizer = torch.optim.Adam(
         generator.parameters(),
@@ -167,9 +167,14 @@ def train_model():
     
     # Save final model in a Kaggle-accessible location for download
     final_model_path = os.path.join(checkpoint_dir, 'kaggle_final_model.pth')
+    
+    # Handle DataParallel wrapper when saving state_dict
+    gen_state_dict = generator.module.state_dict() if isinstance(generator, torch.nn.DataParallel) else generator.state_dict()
+    disc_state_dict = discriminator.module.state_dict() if isinstance(discriminator, torch.nn.DataParallel) else discriminator.state_dict()
+    
     torch.save({
-        'generator_state_dict': generator.state_dict(),
-        'discriminator_state_dict': discriminator.state_dict(),
+        'generator_state_dict': gen_state_dict,
+        'discriminator_state_dict': disc_state_dict,
         'config': config
     }, final_model_path)
     
