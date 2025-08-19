@@ -1,58 +1,48 @@
-import os
 import torch
 
-class Config:
-    """
-    Manages all configuration parameters for datasets, models, and training.
-    """
-    def __init__(self):
-        # Default configuration
-        self.config = {
-            # Dataset parameters
-            'dataset': {
-                'root_dir': 'sat2route/datasets/maps',
-                'target_shape': (256, 256),
-                'test_size': 0.2,
-                'seed': 7
-            },
-            # Dataloader parameters
-            'dataloader': {
-                'batch_size': 16,
-                'num_workers': min(4, os.cpu_count() or 1),
-            },
-            # Model parameters
-            'model': {
-                'generator': {
-                    'in_channels': 3,
-                    'out_channels': 3,
-                    'hidden_channels': 32,
-                    'depth': 6,
-                    'use_dropout': True
-                },
-                'discriminator': {
-                    'in_channels': 6,
-                    'hidden_channels': 8,
-                    'depth': 4
-                }
-            },
-            # Training parameters
-            'training': {
-                'device': 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu',
-                'lambda_recon': 200.0,
-                'epochs': 2,
-                'lr': 0.0002,
-                'beta1': 0.5,
-                'beta2': 0.999,
-            }
+DEFAULT_CONFIG = {
+    # Dataset parameters
+    'dataset': {
+        'root_dir': 'sat2route/datasets/maps',
+        'target_shape': (256, 256),
+        'test_size': 0.2,
+        'seed': 7
+    },
+    # Dataloader parameters
+    'dataloader': {
+        'batch_size': 32,
+        'num_workers': 4,
+    },
+    # Model parameters
+    'model': {
+        'generator': {
+            'in_channels': 3,
+            'out_channels': 3,
+            'hidden_channels': 32,
+            'depth': 6,
+            'use_dropout': True
+        },
+        'discriminator': {
+            'in_channels': 6,
+            'hidden_channels': 8,
+            'depth': 4
         }
-    
-    def __getitem__(self, key):
-        return self.config[key]
-    
-    def __setitem__(self, key, value):
-        self.config[key] = value
-    
-    def get(self, key, default=None):
-        return self.config.get(key, default)
+    },
+    # Training parameters
+    'training': {
+        'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+        'lambda_recon': 200.0,
+        'epochs': 10,
+        'lr': 0.0002,
+        'beta1': 0.5,
+        'beta2': 0.999,
+    }
+}
 
-default_config = Config()
+def get_config(override_dict: dict = None) -> dict:
+    config = DEFAULT_CONFIG.copy()
+
+    if override_dict:
+        config.update({k: override_dict[k] for k in override_dict if override_dict[k] is not None})
+
+    return config
