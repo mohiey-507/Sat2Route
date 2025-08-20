@@ -17,8 +17,6 @@ class Discriminator(nn.Module):
             self.contracts.append(ContractBlock(ch, use_norm=True, use_dropout=False, norm_affine=norm_affine))
             ch *= 2
         self.out_conv = nn.Conv2d(ch, 1, kernel_size=1)
-
-        self._init_weights()
     
     def forward(self, x, y):
         x = torch.cat([x, y], dim=1)
@@ -26,13 +24,4 @@ class Discriminator(nn.Module):
         for contract in self.contracts:
             x = contract(x)
         return self.out_conv(x)
-    
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, a=0.2, mode='fan_out', nonlinearity='leaky_relu')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
+

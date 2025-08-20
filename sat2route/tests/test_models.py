@@ -49,6 +49,7 @@ class TestUNetGenerator(unittest.TestCase):
 
 class TestDiscriminator(unittest.TestCase):
     def setUp(self):
+        default_config = get_config()
         self.disc_config = default_config['model']['discriminator']
         self.dataset_config = default_config['dataset']
         self.in_channels = self.disc_config['in_channels']
