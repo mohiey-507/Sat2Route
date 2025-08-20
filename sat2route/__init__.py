@@ -11,7 +11,7 @@ from .engine.trainer import Trainer
 from .losses.loss import Loss
 
 # Import configuration
-from .config import default_config
+from .config import get_config
 
 __all__ = [
     # Models
@@ -27,5 +27,5 @@ __all__ = [
     'Loss',
     
     # Configuration
-    'default_config',
+    'get_config',
 ]

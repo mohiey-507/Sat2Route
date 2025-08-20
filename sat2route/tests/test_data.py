@@ -8,12 +8,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sat2route.data.dataset import MapsDataset
 from sat2route.data.data_loader import get_dataloaders
-from sat2route.config import default_config
+from sat2route.config import get_config
 
 
 class TestMapsDataset(unittest.TestCase):
     def setUp(self):
-        self.config = default_config["dataset"]
+        self.config = get_config()["dataset"]
         self.root_dir = self.config["root_dir"]
         self.target_shape = self.config["target_shape"]
         self.test_size = self.config["test_size"]

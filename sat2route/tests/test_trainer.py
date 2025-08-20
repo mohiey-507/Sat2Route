@@ -11,11 +11,11 @@ from sat2route.engine.trainer import Trainer
 from sat2route.models import Generator, Discriminator
 from sat2route.losses.loss import Loss
 from sat2route.data.data_loader import get_dataloaders
-from sat2route.config import default_config
+from sat2route.config import get_config
 
 class TestTrainer(unittest.TestCase):
     def setUp(self):
-        # Get configs
+        default_config = get_config()
         self.gen_config = default_config['model']['generator']
         self.disc_config = default_config['model']['discriminator']
         self.training_config = default_config['training']
