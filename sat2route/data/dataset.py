@@ -70,10 +70,9 @@ class MapsDataset(Dataset):
             target_pil = TF.affine(target_pil, angle=0, translate=translate, scale=scale, shear=shear, interpolation=Image.NEAREST)
 
         # RandomResizedCrop
-        if random.random() < 0.5:
-            i, j, h, w = v2.RandomResizedCrop.get_params(input_pil, scale=(0.8, 1.0), ratio=(0.9, 1.1))
-            input_pil = TF.resized_crop(input_pil, i, j, h, w, size=self.target_shape, interpolation=Image.BILINEAR)
-            target_pil = TF.resized_crop(target_pil, i, j, h, w, size=self.target_shape, interpolation=Image.NEAREST)
+        i, j, h, w = v2.RandomResizedCrop.get_params(input_pil, scale=(0.8, 1.0), ratio=(0.9, 1.1))
+        input_pil = TF.resized_crop(input_pil, i, j, h, w, size=self.target_shape, interpolation=Image.BILINEAR)
+        target_pil = TF.resized_crop(target_pil, i, j, h, w, size=self.target_shape, interpolation=Image.NEAREST)
 
         return input_pil, target_pil
     
