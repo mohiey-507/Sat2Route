@@ -30,6 +30,11 @@ class MapsDataset(Dataset):
         self.transform = v2.Compose([
             v2.RandomHorizontalFlip(),
             v2.RandomVerticalFlip(),
+            v2.RandomRotation(degrees=10),
+            v2.RandomResizedCrop(self.target_shape, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+            v2.RandomAffine(degrees=0,translate=(0.05, 0.05), scale=(0.95, 1.05), shear=(-5, 5, -5, 5)),
+            v2.RandomPerspective(distortion_scale=0.3, p=0.3),
+            v2.RandomCrop(size=self.target_shape, padding=10),
         ]) if is_train else None
 
     def __len__(self):
@@ -46,7 +51,11 @@ class MapsDataset(Dataset):
         image_path = self.image_paths[idx]
 
         try:
-            full_image = Image.open(image_path)
+            full_image = Image.open(image_path).convert('RGB')
+
+            if self.transform:
+                full_image = self.transform(full_image)
+
             width, height = full_image.size
             mid_point = width // 2
             
@@ -55,14 +64,6 @@ class MapsDataset(Dataset):
             
             input_tensor = self.to_tensor(input_image)
             target_tensor = self.to_tensor(target_image)
-            
-            if self.transform:
-                combined = torch.cat([input_tensor, target_tensor], dim=0)
-                combined = self.transform(combined)
-                
-                input_channels = input_tensor.shape[0]
-                input_tensor = combined[:input_channels]
-                target_tensor = combined[input_channels:]
             
             input_tensor = self._resize_tensor(input_tensor)
             target_tensor = self._resize_tensor(target_tensor)
