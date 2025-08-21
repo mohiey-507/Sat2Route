@@ -143,61 +143,6 @@ class Trainer:
         plt.axis('off')
         plt.show()
 
-    def train_step(self, batch) -> dict:
-        """Execute a single training step (generator + discriminator) on a batch.
-        
-        Args:
-            batch: Tuple of (condition, target) from dataloader
-                condition: Satellite image [B, 3, H, W]
-                target: Map image [B, 3, H, W]
-                
-        Returns:
-            dict: Dictionary with all loss components
-        """
-        condition, target = batch
-        condition = condition.to(self.device)
-        target = target.to(self.device)
-        
-        # Train discriminator
-        self.disc_optimizer.zero_grad()
-        with autocast(device_type=self.device.type):
-            disc_losses = self.loss_fn(self.discriminator, target, condition, mode='discriminator', gen=self.generator)
-        self.disc_scaler.scale(disc_losses['total']).backward()
-        self.disc_scaler.step(self.disc_optimizer)
-        self.disc_scaler.update()
-        
-        # Train generator
-        self.gen_optimizer.zero_grad()
-        with autocast(device_type=self.device.type):
-            gen_losses = self.loss_fn(self.generator, target, condition, mode='generator', disc=self.discriminator)
-        self.gen_scaler.scale(gen_losses['total']).backward()
-        self.gen_scaler.step(self.gen_optimizer)
-        self.gen_scaler.update()
-        
-        # Visualization
-        if self.display_step > 0 and self.cur_step % self.display_step == 0:
-            with torch.no_grad():
-                with autocast(device_type=self.device.type):
-                    fake_logits = self.generator(condition)
-                fake = torch.sigmoid(fake_logits)
-
-            input_dim = condition.shape[1]
-            real_dim = target.shape[1]
-            target_shape = condition.shape[2]
-            print(f"\nStep {self.cur_step}: Visualization of condition (input), target (real), and generated (fake) images")
-            
-            self.show_tensor_images(condition, num_images=4, size=(input_dim, target_shape, target_shape))
-            self.show_tensor_images(target, num_images=4, size=(real_dim, target_shape, target_shape))
-            self.show_tensor_images(fake.to(torch.float32), num_images=4, size=(real_dim, target_shape, target_shape))
-        
-        # Increment step counter
-        self.cur_step += 1
-        
-        return {
-            'disc': disc_losses,
-            'gen': gen_losses
-        }
-
     def train_epoch(self):
         """Train the model for one epoch.
         
@@ -216,20 +161,55 @@ class Trainer:
         pbar.set_description(f"Epoch {self.current_epoch+1}/{self.epochs}")
         
         for i, batch in pbar:
-            batch_losses = self.train_step(batch)
-            
-            # Update epoch losses
-            for model_type in ['disc', 'gen']:
-                for loss_type, loss_value in batch_losses[model_type].items():
-                    epoch_losses[model_type][loss_type] += loss_value.item()
-            
-            # Update progress bar
+            condition, target = batch
+            condition = condition.to(self.device)
+            target = target.to(self.device)
+
+            # Discriminator step
+            self.disc_optimizer.zero_grad()
+            with autocast(device_type=self.device.type):
+                disc_losses = self.loss_fn(self.discriminator, target, condition, mode='discriminator', gen=self.generator)
+            self.disc_scaler.scale(disc_losses['total']).backward()
+            self.disc_scaler.step(self.disc_optimizer)
+            self.disc_scaler.update()
+
+            # Generator step
+            self.gen_optimizer.zero_grad()
+            with autocast(device_type=self.device.type):
+                gen_losses = self.loss_fn(self.generator, target, condition, mode='generator', disc=self.discriminator)
+            self.gen_scaler.scale(gen_losses['total']).backward()
+            self.gen_scaler.step(self.gen_optimizer)
+            self.gen_scaler.update()
+
+            # Accumulate scalar losses
+            for model_type in ('disc', 'gen'):
+                losses_dict = disc_losses if model_type == 'disc' else gen_losses
+                for loss_name, loss_val in losses_dict.items():
+                    if loss_name in epoch_losses[model_type]:
+                        epoch_losses[model_type][loss_name] += float(loss_val.item())
+
+            # Visualization
+            if self.display_step > 0 and self.cur_step % self.display_step == 0:
+                with torch.no_grad():
+                    with autocast(device_type=self.device.type):
+                        fake_logits = self.generator(condition)
+                    fake = torch.sigmoid(fake_logits)
+
+                input_dim = condition.shape[1]
+                real_dim = target.shape[1]
+                target_shape = condition.shape[2]
+                print(f"\nStep {self.cur_step}: Visualization of condition (input), target (real), and generated (fake) images")
+                self.show_tensor_images(condition, num_images=4, size=(input_dim, target_shape, target_shape))
+                self.show_tensor_images(target, num_images=4, size=(real_dim, target_shape, target_shape))
+                self.show_tensor_images(fake.to(torch.float32), num_images=4, size=(real_dim, target_shape, target_shape))
+
+            self.cur_step += 1
+
             pbar.set_postfix({
-                'G_loss': f"{batch_losses['gen']['total'].item():.4f}",
-                'D_loss': f"{batch_losses['disc']['total'].item():.4f}"
+                'G_loss': f"{gen_losses['total'].item():.4f}",
+                'D_loss': f"{disc_losses['total'].item():.4f}"
             })
         
-        # Calculate averages
         n_batches = len(self.train_loader)
         for model_type in ['disc', 'gen']:
             for loss_type in epoch_losses[model_type]:

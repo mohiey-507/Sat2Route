@@ -25,7 +25,7 @@ class TestTrainer(unittest.TestCase):
         self.batch_size = self.dataloader_config['batch_size'] // 4
         
         # Create dataloaders
-        self.train_loader, self.val_loader = get_dataloaders(batch_size=self.batch_size)
+        self.train_loader, self.val_loader = get_dataloaders(batch_size=self.batch_size, test_size=0.984)
         
         # Create model instances
         self.generator = Generator(
@@ -91,11 +91,10 @@ class TestTrainer(unittest.TestCase):
         self.assertIsInstance(self.trainer.discriminator, Discriminator)
         self.assertIsInstance(self.trainer.loss_fn, Loss)
     
-    def test_train_step(self):
-        """Test a single training step"""
-        batch = next(iter(self.train_loader))
+    def test_train_epoch(self):
+        """Test a single training epoch"""
         
-        losses = self.trainer.train_step(batch)
+        losses = self.trainer.train_epoch()
         
         self.assertIn('disc', losses)
         self.assertIn('gen', losses)
