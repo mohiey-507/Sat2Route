@@ -1,19 +1,24 @@
 import os
 import glob
+import random
 import torch
-import torch.nn.functional as F
 from torch.utils.data import Dataset
 import torchvision.transforms.v2 as v2
+import torchvision.transforms.functional as TF
 from PIL import Image
+from typing import Optional
 
 class MapsDataset(Dataset):
-    def __init__(self, root_dir:str, target_shape:tuple, is_train:bool, test_size:float):
+    def __init__(self, root_dir: str, target_shape: tuple[int, int], is_train: bool, test_size: float, seed: Optional[int] = None):
         super().__init__()
         self.root_dir = root_dir
         self.target_shape = target_shape
         self.is_train = is_train
         
-        # Collect and sort all image paths
+        if seed is not None:
+            random.seed(seed)
+            torch.manual_seed(seed)
+        
         train_images = glob.glob(os.path.join(root_dir, 'train', '*.jpg'))
         val_images = glob.glob(os.path.join(root_dir, 'val', '*.jpg'))
         all_images = train_images + val_images
@@ -25,48 +30,67 @@ class MapsDataset(Dataset):
             v2.ToImage(),
             v2.ToDtype(torch.float32, scale=True)
         ])
-        
-        # Training transforms
-        self.transform = v2.Compose([
-            v2.RandomHorizontalFlip(),
-            v2.RandomVerticalFlip(),
-            v2.RandomRotation(degrees=10),
-            v2.RandomResizedCrop(self.target_shape, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
-            v2.RandomAffine(degrees=0,translate=(0.05, 0.05), scale=(0.95, 1.05), shear=(-5, 5, -5, 5)),
-            v2.RandomPerspective(distortion_scale=0.3, p=0.3),
-            v2.RandomCrop(size=self.target_shape, padding=10),
-        ]) if is_train else None
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.image_paths)
     
-    def _resize_tensor(self, tensor):
-        tensor = tensor.unsqueeze(0)
-        tensor = F.interpolate(tensor, size=self.target_shape, mode='bilinear', align_corners=False)
-        return tensor.squeeze(0)
+    def _apply_synchronized_transforms(
+            self, input_pil: Image.Image, target_pil: Image.Image
+        ) -> tuple[Image.Image, Image.Image]:
+        """
+        Apply synchronized augmentations to input and target PIL images.
+        """
+        if not self.is_train:
+            input_pil = TF.resize(input_pil, self.target_shape, interpolation=Image.BILINEAR)
+            target_pil = TF.resize(target_pil, self.target_shape, interpolation=Image.NEAREST)
+            return input_pil, target_pil
+
+        # Random horizontal flip
+        if random.random() < 0.5:
+            input_pil = TF.hflip(input_pil)
+            target_pil = TF.hflip(target_pil)
+
+        # Random vertical flip
+        if random.random() < 0.5:
+            input_pil = TF.vflip(input_pil)
+            target_pil = TF.vflip(target_pil)
+
+        # Random rotation
+        angle = random.uniform(-10, 10)
+        input_pil = TF.rotate(input_pil, angle=angle, interpolation=Image.BILINEAR)
+        target_pil = TF.rotate(target_pil, angle=angle, interpolation=Image.NEAREST)
+
+        # Random affine
+        translate = (random.uniform(-0.05, 0.05), random.uniform(-0.05, 0.05))
+        scale = random.uniform(0.95, 1.05)
+        shear = (random.uniform(-5, 5), random.uniform(-5, 5))
+        input_pil = TF.affine(input_pil, angle=0, translate=translate, scale=scale, shear=shear, interpolation=Image.BILINEAR)
+        target_pil = TF.affine(target_pil, angle=0, translate=translate, scale=scale, shear=shear, interpolation=Image.NEAREST)
+
+        # RandomResizedCrop
+        i, j, h, w = v2.RandomResizedCrop.get_params(input_pil, scale=(0.8, 1.0), ratio=(0.9, 1.1))
+        input_pil = TF.resized_crop(input_pil, i, j, h, w, size=self.target_shape, interpolation=Image.BILINEAR)
+        target_pil = TF.resized_crop(target_pil, i, j, h, w, size=self.target_shape, interpolation=Image.NEAREST)
+
+        return input_pil, target_pil
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         if idx >= len(self.image_paths):
             idx = idx % len(self.image_paths)
         image_path = self.image_paths[idx]
 
         try:
             full_image = Image.open(image_path).convert('RGB')
-
-            if self.transform:
-                full_image = self.transform(full_image)
-
             width, height = full_image.size
             mid_point = width // 2
             
             input_image = full_image.crop((0, 0, mid_point, height))
             target_image = full_image.crop((mid_point, 0, width, height))
+
+            input_image, target_image = self._apply_synchronized_transforms(input_image, target_image)
             
             input_tensor = self.to_tensor(input_image)
             target_tensor = self.to_tensor(target_image)
-            
-            input_tensor = self._resize_tensor(input_tensor)
-            target_tensor = self._resize_tensor(target_tensor)
             
             return input_tensor, target_tensor
         
