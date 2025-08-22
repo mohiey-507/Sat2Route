@@ -15,8 +15,8 @@ class TestUNetGenerator(unittest.TestCase):
         self.dataset_config = default_config['dataset']
         self.in_channels = self.gen_config['in_channels']
         self.out_channels = self.gen_config['out_channels']
-        self.hidden_channels = self.gen_config['hidden_channels'] // 2
-        self.depth = self.gen_config['depth'] - 2
+        self.hidden_channels = self.gen_config['hidden_channels']
+        self.depth = self.gen_config['depth']
         self.height, self.width = self.dataset_config['target_shape']
         
         self.model = Generator(
@@ -54,7 +54,7 @@ class TestDiscriminator(unittest.TestCase):
         self.dataset_config = default_config['dataset']
         self.in_channels = self.disc_config['in_channels']
         self.hidden_channels = self.disc_config['hidden_channels']
-        self.depth = self.disc_config['depth']
+        self.depth = self.disc_config['depth'] - 1
         self.height, self.width = self.dataset_config['target_shape']
         
         self.model = Discriminator(
