@@ -43,10 +43,11 @@ class ContractBlock(nn.Module):
     """
     Downsampling block for UNet: ConvBlock with LeakyReLU.
     """
-    def __init__(self, in_ch: int, use_norm: bool = False, use_dropout: bool = False,
+    def __init__(self, in_ch: int, out_ch: int = None, use_norm: bool = False, use_dropout: bool = False,
                 use_spectral: bool = True, activation='relu', dropout_rate: float = 0.5):
         super().__init__()
-        out_ch = in_ch * 2
+        if out_ch is None:
+            out_ch = in_ch * 2
         self.conv = ConvBlock(in_ch, out_ch, use_norm=use_norm, use_dropout=use_dropout, downsample=True,
                             activation=activation, use_spectral=use_spectral, dropout_rate=dropout_rate)
     
@@ -57,12 +58,12 @@ class ExpandBlock(nn.Module):
     """
     Upsampling block for UNet: ConvTranspose2d for upsample then ConvBlock with ReLU.
     """
-    def __init__(self, in_ch: int, use_dropout: bool = False,
-                dropout_rate: float = 0.5):
+    def __init__(self, in_ch: int, skip_ch: int, use_dropout: bool = False, dropout_rate: float = 0.5):
         super().__init__()
-        mid_ch = in_ch // 2
+        mid_ch = skip_ch
         self.deconv = nn.ConvTranspose2d(in_ch, mid_ch, kernel_size=2, stride=2)
-        self.conv = ConvBlock(in_ch, mid_ch, use_norm=True, use_dropout=use_dropout, downsample=False, use_spectral=False, activation='relu', dropout_rate=dropout_rate)
+        conv_in_ch = mid_ch + skip_ch
+        self.conv = ConvBlock(conv_in_ch, mid_ch, use_norm=True, use_dropout=use_dropout, downsample=False, use_spectral=False, activation='relu', dropout_rate=dropout_rate)
 
     def forward(self, x, skip):
         x = self.deconv(x)
