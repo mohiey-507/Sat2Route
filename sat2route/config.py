@@ -10,7 +10,7 @@ DEFAULT_CONFIG = {
     },
     # Dataloader parameters
     'dataloader': {
-        'batch_size': 32,
+        'batch_size': 4,
         'num_workers': 4,
     },
     # Model parameters
@@ -18,14 +18,14 @@ DEFAULT_CONFIG = {
         'generator': {
             'in_channels': 3,
             'out_channels': 3,
-            'hidden_channels': 32,
-            'depth': 6,
+            'hidden_channels': 64,
+            'depth': 7,
             'use_dropout': True
         },
         'discriminator': {
             'in_channels': 6,
-            'hidden_channels': 8,
-            'depth': 4
+            'hidden_channels': 64,
+            'depth': 5
         }
     },
     # Training parameters
