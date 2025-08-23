@@ -54,7 +54,17 @@ class Trainer:
         self.logger.info(f"Initializing trainer")
 
         # Get training config
-        default_config = config or get_config()
+        default_config = config or get_config({
+                'training': {
+                    'device': 'mps',
+                    'lambda_recon': 200.0,
+                    'epochs': 2,
+                    'lr': 0.0002,
+                    'beta1': 0.5,
+                    'beta2': 0.999,
+                }
+            }
+        )
         self.config = default_config
         self.training_config = default_config['training']
         self.lambda_recon = self.training_config['lambda_recon']
@@ -105,6 +115,10 @@ class Trainer:
             optim.Adam(self.generator.parameters(), lr=self.lr, betas=(self.beta1, self.beta2))
         self.disc_optimizer = disc_optimizer if disc_optimizer is not None else \
             optim.Adam(self.discriminator.parameters(), lr=self.lr, betas=(self.beta1, self.beta2))
+        
+        self.gen_scheduler = optim.lr_scheduler.LambdaLR(self.gen_optimizer, lr_lambda=self._lr_lambda)
+        self.disc_scheduler = optim.lr_scheduler.LambdaLR(self.disc_optimizer, lr_lambda=self._lr_lambda)
+
 
         # Initialize loss function
         self.loss_fn = loss_fn if loss_fn is not None else Loss(lambda_recon=self.lambda_recon).to(self.device)
@@ -129,6 +143,14 @@ class Trainer:
         self.current_epoch = 0
         self.cur_step = 0
         self.display_step = display_step
+
+    def _lr_lambda(self, epoch):
+        half = max(1, self.epochs // 2)
+        if epoch < half:
+            return 1.0
+        denom = float(self.epochs - half)
+        return max(0.0, (self.epochs - epoch) / denom) if denom > 0 else 0.0
+
 
     def show_tensor_images(self, image_tensor, num_images=4, size=(3, 256, 256)):
         '''
@@ -189,7 +211,7 @@ class Trainer:
                         epoch_losses[model_type][loss_name] += float(loss_val.item())
 
             # Visualization
-            if self.display_step > 0 and self.cur_step % self.display_step == 0:
+            if self.display_step > 0 and self.cur_step % self.display_step == 0 and self.cur_step > 0:
                 with torch.no_grad():
                     with autocast(device_type=self.device.type):
                         fake_logits = self.generator(condition)
@@ -229,7 +251,6 @@ class Trainer:
         Returns:
             dict: Dictionary with validation losses
             float: Total validation loss
-            list: Samples for visualization [condition, target, generated]
         """
         self.generator.eval()
         self.discriminator.eval()
@@ -238,8 +259,6 @@ class Trainer:
             'disc': {'total': 0, 'real': 0, 'fake': 0},
             'gen': {'total': 0, 'adv': 0, 'recon': 0}
         }
-        
-        samples = []
         
         with torch.no_grad():
             pbar = tqdm(enumerate(self.val_loader), total=len(self.val_loader))
@@ -270,10 +289,6 @@ class Trainer:
                     ):
                         if loss_type in val_losses[model_type]:
                             val_losses[model_type][loss_type] += loss_value.item()
-                
-                # Save first batch for visualization
-                if i == 0:
-                    samples = [condition[:4], target[:4], fake[:4]]
         
         # Calculate averages
         n_batches = len(self.val_loader)
@@ -290,7 +305,7 @@ class Trainer:
             f"D_loss: {val_losses['disc']['total']:.4f}"
         )
         
-        return val_losses, total_val_loss, samples
+        return val_losses, total_val_loss
 
     def save_checkpoint(self, epoch, val_loss, is_best=False, is_final=False):
         checkpoint = {
@@ -299,6 +314,8 @@ class Trainer:
             'discriminator_state_dict': self.discriminator.state_dict(),
             'gen_optimizer_state_dict': self.gen_optimizer.state_dict(),
             'disc_optimizer_state_dict': self.disc_optimizer.state_dict(),
+            'gen_scheduler_state_dict': self.gen_scheduler.state_dict(),
+            'disc_scheduler_state_dict': self.disc_scheduler.state_dict(),
             'val_loss': val_loss,
             'config': self.config
         }
@@ -336,6 +353,9 @@ class Trainer:
         self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
         self.gen_optimizer.load_state_dict(checkpoint['gen_optimizer_state_dict'])
         self.disc_optimizer.load_state_dict(checkpoint['disc_optimizer_state_dict'])
+        self.gen_scheduler.load_state_dict(checkpoint['gen_scheduler_state_dict'])
+        self.disc_scheduler.load_state_dict(checkpoint['disc_scheduler_state_dict'])
+
         
         self.best_val_loss = checkpoint['val_loss']
         epoch = checkpoint['epoch']
@@ -377,8 +397,12 @@ class Trainer:
             history['train_losses'].append(train_losses)
             
             # Validate
-            val_losses, total_val_loss, samples = self.validate()
+            val_losses, total_val_loss = self.validate()
             history['val_losses'].append(val_losses)
+
+            self.gen_scheduler.step()
+            self.disc_scheduler.step()
+            self.logger.info("learning rate: {:.6f}".format(self.gen_optimizer.param_groups[0]['lr']))
             
             # Determine if this is the best model so far
             is_best = total_val_loss < self.best_val_loss

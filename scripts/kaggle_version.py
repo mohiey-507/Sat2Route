@@ -1,28 +1,25 @@
 # %% [code]
 # Clone the repository
-!git clone -b amp https://github.com/mohiey-507/Sat2Route
+!git clone https://github.com/mohiey-507/Sat2Route
 %cd Sat2Route
 
 # %% [code]
-# Download and extract dataset
-!mkdir -p datasets
-!wget -q -N http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/maps.tar.gz -O datasets/maps.tar.gz
-!tar -zxf datasets/maps.tar.gz -C datasets/
-!rm datasets/maps.tar.gz
+%%bash
+echo "Download and extract dataset"
+mkdir -p datasets
+wget -q -N http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/maps.tar.gz -O datasets/maps.tar.gz
+tar -zxf datasets/maps.tar.gz -C datasets/
+rm datasets/maps.tar.gz
 
 # %% [code]
 # Set up Python path for imports
 import os
 import sys
 import torch
-import matplotlib.pyplot as plt
-
-# Ignore warnings
 import warnings
-warnings.filterwarnings('ignore')
-
-# Add project to path
 from pathlib import Path
+
+warnings.filterwarnings('ignore')
 sys.path.insert(0, str(Path.cwd()))
 
 from sat2route import (
@@ -32,27 +29,13 @@ from sat2route import (
 
 # %% [code] 
 def get_kaggle_config():
-    override_dict = {
-        'dataset': {
-            'root_dir': 'datasets/maps',
-        },
-        'dataloader': {
-            'batch_size': 32,
-            'num_workers': 4,
-        },
-        'training': {
-            'device': 'cuda',
-            'lambda_recon': 180.0,
-            'epochs': 10,
-        }
-    }
-    config = get_config(override_dict)
+    config = get_config()
     
     checkpoint_dir = 'checkpoints'
     os.makedirs(checkpoint_dir, exist_ok=True)
     
     # Visualization frequency
-    display_step = 50
+    display_step = 10_000
     
     return config, checkpoint_dir, display_step
 
@@ -82,36 +65,33 @@ def train_model():
     
     # Initialize models based on config
     print("Initializing models...")
+    gen_cfg = config['model']['generator']
     generator = Generator(
-        in_ch=config['model']['generator']['in_channels'],
-        out_ch=config['model']['generator']['out_channels'],
-        hidden_ch=config['model']['generator']['hidden_channels'],
-        depth=config['model']['generator']['depth']
+        in_ch=gen_cfg['in_channels'],
+        out_ch=gen_cfg['out_channels'],
+        hidden_ch=gen_cfg['hidden_channels'],
+        depth=gen_cfg['depth']
     )
-    
+    disc_cfg = config['model']['discriminator']
     discriminator = Discriminator(
-        in_ch=config['model']['discriminator']['in_channels'],
-        hidden_ch=config['model']['discriminator']['hidden_channels'],
-        depth=config['model']['discriminator']['depth']
+        in_ch=disc_cfg['in_channels'],
+        hidden_ch=disc_cfg['hidden_channels'],
+        depth=disc_cfg['depth']
     )
-    
-    # Apply DataParallel if multiple GPUs are available
-    if device.type == 'cuda' and torch.cuda.device_count() > 1:
-        print("Applying torch.nn.DataParallel to models...")
-        generator = torch.nn.DataParallel(generator)
-        discriminator = torch.nn.DataParallel(discriminator)
     
     # Initialize optimizer and loss function
+    print("Setting up optimizers and loss function...")
+    train_cfg = config['training']
     gen_optimizer = torch.optim.Adam(
         generator.parameters(),
-        lr=config['training']['lr'],
-        betas=(config['training']['beta1'], config['training']['beta2'])
+        lr=train_cfg['lr'],
+        betas=(train_cfg['beta1'], train_cfg['beta2'])
     )
     
     disc_optimizer = torch.optim.Adam(
         discriminator.parameters(),
-        lr=config['training']['lr'],
-        betas=(config['training']['beta1'], config['training']['beta2'])
+        lr=train_cfg['lr'],
+        betas=(train_cfg['beta1'], train_cfg['beta2'])
     )
     
     loss_fn = Loss(lambda_recon=config['training']['lambda_recon'])
@@ -142,73 +122,18 @@ def train_model():
     # Save final model in a Kaggle-accessible location for download
     final_model_path = os.path.join(checkpoint_dir, 'kaggle_final_model.pth')
     
-    # Handle DataParallel wrapper when saving state_dict
-    gen_state_dict = generator.module.state_dict() if isinstance(generator, torch.nn.DataParallel) else generator.state_dict()
-    disc_state_dict = discriminator.module.state_dict() if isinstance(discriminator, torch.nn.DataParallel) else discriminator.state_dict()
+    # Saving state_dict
+    gen_state_dict = generator.state_dict()
     
-    torch.save({
-        'generator_state_dict': gen_state_dict,
-        'discriminator_state_dict': disc_state_dict,
-        'config': config
-    }, final_model_path)
+    torch.save(
+        {'generator_state_dict': gen_state_dict},
+        final_model_path
+    )
     
     print(f"\nFinal model saved to {final_model_path}")
     
-    # Generate and save some sample images
-    print("\nGenerating sample predictions...")
-    generate_samples(generator, val_loader, device)
-    
-    return generator, discriminator
-
-# %% [code]
-def generate_samples(generator, val_loader, device, num_samples=5):
-    """Generate and display sample predictions"""
-    generator.eval()
-    
-    # Create a figure to display samples
-    fig, axs = plt.subplots(num_samples, 3, figsize=(15, 5*num_samples))
-    fig.suptitle('Sample Predictions', fontsize=16)
-    
-    # Set column titles
-    axs[0, 0].set_title('Satellite Image (Input)')
-    axs[0, 1].set_title('Ground Truth Map')
-    axs[0, 2].set_title('Generated Map')
-    
-    # Get samples from validation set
-    iterator = iter(val_loader)
-    
-    with torch.no_grad():
-        for i in range(num_samples):
-            # Get a batch
-            satellite_imgs, map_imgs = next(iterator)
-            
-            # Move to device
-            satellite_imgs = satellite_imgs.to(device)
-            map_imgs = map_imgs.to(device)
-            
-            # Generate prediction
-            fake_maps = generator(satellite_imgs)
-            
-            # Get the first image from the batch
-            satellite_img = satellite_imgs[0].cpu().permute(1, 2, 0)
-            real_map = map_imgs[0].cpu().permute(1, 2, 0)
-            fake_map = fake_maps[0].cpu().permute(1, 2, 0)
-            
-            # Plot
-            axs[i, 0].imshow(satellite_img)
-            axs[i, 1].imshow(real_map.squeeze())
-            axs[i, 2].imshow(fake_map.squeeze())
-            
-            # Remove axis ticks
-            for j in range(3):
-                axs[i, j].set_xticks([])
-                axs[i, j].set_yticks([])
-    
-    # Save the figure
-    plt.tight_layout()
-    plt.savefig('sample_predictions.png')
-    plt.show()
+    return generator
 
 # %% [code]
 # Run the complete training process
-generator, discriminator = train_model()
+generator = train_model()
