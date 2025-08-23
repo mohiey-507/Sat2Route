@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sat2route import (
     Generator, Discriminator, Trainer, Loss,
-    get_dataloaders, default_config
+    get_dataloaders, get_config
 )
 
 def parse_args():
@@ -48,8 +48,8 @@ def parse_args():
                         help='Name for log files (default: sat2route)')
     
     # Visualization
-    parser.add_argument('--display-step', type=int, default=500,
-                        help='Frequency to display sample images during training (default: 500)')
+    parser.add_argument('--display-step', type=int, default=2000,
+                        help='Frequency to display sample images during training (default: 2000)')
     
     return parser.parse_args()
 
@@ -59,6 +59,9 @@ def main():
     
     # Create checkpoint directory
     os.makedirs(args.checkpoint_dir, exist_ok=True)
+
+    # Load default config
+    default_config = get_config()
     
     # Update config with command-line args if provided
     if args.lr is not None:
@@ -88,7 +91,7 @@ def main():
             else 'cpu'
         )
     
-    train_loader, val_loader = get_dataloaders()
+    train_loader, val_loader = get_dataloaders(default_config)
     
     # Print training info
     print(f"Training with:")
@@ -115,7 +118,7 @@ def main():
     )
     
     # Initialize optimizer and loss function
-    gen_optimizer = torch.optim.Adam(
+    gen_optimizer = torch.optim.AdamW(
         generator.parameters(),
         lr=default_config['training']['lr'],
         betas=(default_config['training']['beta1'], default_config['training']['beta2'])
@@ -131,6 +134,7 @@ def main():
     
     # Initialize trainer
     trainer = Trainer(
+        config=default_config,
         generator=generator,
         discriminator=discriminator,
         train_loader=train_loader,
