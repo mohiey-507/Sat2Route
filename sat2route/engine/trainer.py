@@ -397,8 +397,12 @@ class Trainer:
             history['train_losses'].append(train_losses)
             
             # Validate
-            val_losses, total_val_loss, _ = self.validate()
+            val_losses, total_val_loss = self.validate()
             history['val_losses'].append(val_losses)
+
+            self.gen_scheduler.step()
+            self.disc_scheduler.step()
+            self.logger.info("learning rate: {:.6f}".format(self.gen_optimizer.param_groups[0]['lr']))
             
             # Determine if this is the best model so far
             is_best = total_val_loss < self.best_val_loss
