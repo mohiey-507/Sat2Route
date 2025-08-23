@@ -3,7 +3,7 @@ import torch
 DEFAULT_CONFIG = {
     # Dataset parameters
     'dataset': {
-        'root_dir': 'sat2route/datasets/maps',
+        'root_dir': 'datasets/maps',
         'target_shape': (256, 256),
         'test_size': 0.2,
         'seed': 7
@@ -32,7 +32,7 @@ DEFAULT_CONFIG = {
     'training': {
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         'lambda_recon': 200.0,
-        'epochs': 10,
+        'epochs': 200,
         'lr': 0.0002,
         'beta1': 0.5,
         'beta2': 0.999,
