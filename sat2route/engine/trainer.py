@@ -211,7 +211,7 @@ class Trainer:
                         epoch_losses[model_type][loss_name] += float(loss_val.item())
 
             # Visualization
-            if self.display_step > 0 and self.cur_step % self.display_step == 0:
+            if self.display_step > 0 and self.cur_step % self.display_step == 0 and self.cur_step > 0:
                 with torch.no_grad():
                     with autocast(device_type=self.device.type):
                         fake_logits = self.generator(condition)
@@ -251,7 +251,6 @@ class Trainer:
         Returns:
             dict: Dictionary with validation losses
             float: Total validation loss
-            list: Samples for visualization [condition, target, generated]
         """
         self.generator.eval()
         self.discriminator.eval()
@@ -260,8 +259,6 @@ class Trainer:
             'disc': {'total': 0, 'real': 0, 'fake': 0},
             'gen': {'total': 0, 'adv': 0, 'recon': 0}
         }
-        
-        samples = []
         
         with torch.no_grad():
             pbar = tqdm(enumerate(self.val_loader), total=len(self.val_loader))
@@ -292,10 +289,6 @@ class Trainer:
                     ):
                         if loss_type in val_losses[model_type]:
                             val_losses[model_type][loss_type] += loss_value.item()
-                
-                # Save first batch for visualization
-                if i == 0:
-                    samples = [condition[:4], target[:4], fake[:4]]
         
         # Calculate averages
         n_batches = len(self.val_loader)
@@ -312,7 +305,7 @@ class Trainer:
             f"D_loss: {val_losses['disc']['total']:.4f}"
         )
         
-        return val_losses, total_val_loss, samples
+        return val_losses, total_val_loss
 
     def save_checkpoint(self, epoch, val_loss, is_best=False, is_final=False):
         checkpoint = {
@@ -404,7 +397,7 @@ class Trainer:
             history['train_losses'].append(train_losses)
             
             # Validate
-            val_losses, total_val_loss, samples = self.validate()
+            val_losses, total_val_loss, _ = self.validate()
             history['val_losses'].append(val_losses)
             
             # Determine if this is the best model so far
