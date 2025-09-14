@@ -55,20 +55,6 @@ class MapsDataset(Dataset):
             input_pil = TF.vflip(input_pil)
             target_pil = TF.vflip(target_pil)
 
-        # Random rotation
-        if random.random() < 0.5:
-            angle = random.uniform(-10, 10)
-            input_pil = TF.rotate(input_pil, angle=angle, interpolation=Image.BILINEAR)
-            target_pil = TF.rotate(target_pil, angle=angle, interpolation=Image.NEAREST)
-
-        # Random affine
-        if random.random() < 0.5:
-            translate = (random.uniform(-0.05, 0.05), random.uniform(-0.05, 0.05))
-            scale = random.uniform(0.95, 1.05)
-            shear = (random.uniform(-5, 5), random.uniform(-5, 5))
-            input_pil = TF.affine(input_pil, angle=0, translate=translate, scale=scale, shear=shear, interpolation=Image.BILINEAR)
-            target_pil = TF.affine(target_pil, angle=0, translate=translate, scale=scale, shear=shear, interpolation=Image.NEAREST)
-
         # RandomResizedCrop
         i, j, h, w = v2.RandomResizedCrop.get_params(input_pil, scale=(0.8, 1.0), ratio=(0.9, 1.1))
         input_pil = TF.resized_crop(input_pil, i, j, h, w, size=self.target_shape, interpolation=Image.BILINEAR)
