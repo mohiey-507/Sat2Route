@@ -42,7 +42,7 @@ class MapsDataset(Dataset):
         """
         if not self.is_train:
             input_pil = TF.resize(input_pil, self.target_shape, interpolation=Image.BILINEAR)
-            target_pil = TF.resize(target_pil, self.target_shape, interpolation=Image.NEAREST)
+            target_pil = TF.resize(target_pil, self.target_shape, interpolation=Image.BILINEAR)
             return input_pil, target_pil
 
         # Random horizontal flip
@@ -58,7 +58,7 @@ class MapsDataset(Dataset):
         # RandomResizedCrop
         i, j, h, w = v2.RandomResizedCrop.get_params(input_pil, scale=(0.8, 1.0), ratio=(0.9, 1.1))
         input_pil = TF.resized_crop(input_pil, i, j, h, w, size=self.target_shape, interpolation=Image.BILINEAR)
-        target_pil = TF.resized_crop(target_pil, i, j, h, w, size=self.target_shape, interpolation=Image.NEAREST)
+        target_pil = TF.resized_crop(target_pil, i, j, h, w, size=self.target_shape, interpolation=Image.BILINEAR)
 
         return input_pil, target_pil
     
