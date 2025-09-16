@@ -6,12 +6,12 @@ DEFAULT_CONFIG = {
         'root_dir': 'datasets/maps',
         'target_shape': (256, 256),
         'test_size': 0.2,
-        'seed': 7
+        'seed': 2025
     },
     # Dataloader parameters
     'dataloader': {
-        'batch_size': 4,
-        'num_workers': 4,
+        'batch_size': 2,
+        'num_workers': 2,
     },
     # Model parameters
     'model': {
@@ -31,8 +31,8 @@ DEFAULT_CONFIG = {
     # Training parameters
     'training': {
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
-        'lambda_recon': 200.0,
-        'epochs': 200,
+        'lambda_recon': 100.0,
+        'epochs': 165,
         'lr': 0.0002,
         'beta1': 0.5,
         'beta2': 0.999,
