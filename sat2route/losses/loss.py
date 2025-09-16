@@ -20,11 +20,10 @@ class Loss(nn.Module):
     
     def generator_loss(self, gen, disc, real, condition):
         gen_logits = gen(condition)
-
         fake = torch.sigmoid(gen_logits) 
         recon_loss = self.recon_criterion(fake, real)
 
-        fake_logits = disc(gen_logits, condition)
+        fake_logits = disc(fake, condition)
         adv_loss = self.adv_criterion(fake_logits, torch.ones_like(fake_logits))
 
         total_loss = adv_loss + self.lambda_recon * recon_loss
@@ -37,9 +36,9 @@ class Loss(nn.Module):
     
     def discriminator_loss(self, gen, disc, real, condition):
         with torch.no_grad():
-            gen_logits = gen(condition)
+            fake_image = torch.sigmoid(gen(condition))
         real_logits = disc(real, condition)
-        fake_logits = disc(gen_logits.detach(), condition)
+        fake_logits = disc(fake_image.detach(), condition)
 
         real_loss = self.adv_criterion(real_logits, torch.ones_like(real_logits))
         fake_loss = self.adv_criterion(fake_logits, torch.zeros_like(fake_logits))
