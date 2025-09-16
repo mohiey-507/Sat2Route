@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch.nn.utils import spectral_norm
 class ConvBlock(nn.Module):
     """
-        Conv2d --> InstanceNorm2d --> activation --> Dropout
-    --> Conv2d --> InstanceNorm2d --> activation --> Dropout
+        Conv2d --> InstanceNorm2d/spectral_norm --> activation --> Dropout
+    --> Conv2d --> InstanceNorm2d/spectral_norm --> activation --> Dropout
     """
     def __init__(self, in_ch: int, out_ch: int, use_norm: bool, use_dropout: bool,
                 downsample: bool, use_spectral: bool, activation: str, dropout_rate: float):
@@ -19,17 +19,15 @@ class ConvBlock(nn.Module):
             conv1 = spectral_norm(conv1)
         layers.append(conv1)
         if use_norm:
-            layers.append(nn.InstanceNorm2d(out_ch))
+            layers.append(nn.InstanceNorm2d(out_ch, affine=True))
         layers.append(act)
-        if use_dropout:
-            layers.append(nn.Dropout2d(dropout_rate))
 
         conv2 = nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=stride, padding=1, bias=bias)
         if use_spectral:
             conv2 = spectral_norm(conv2)
         layers.append(conv2)
         if use_norm:
-            layers.append(nn.InstanceNorm2d(out_ch))
+            layers.append(nn.InstanceNorm2d(out_ch, affine=True))
         layers.append(act)
         if use_dropout:
             layers.append(nn.Dropout2d(dropout_rate))
@@ -61,7 +59,7 @@ class ExpandBlock(nn.Module):
     def __init__(self, in_ch: int, skip_ch: int, use_dropout: bool = False, dropout_rate: float = 0.5):
         super().__init__()
         mid_ch = skip_ch
-        self.deconv = nn.ConvTranspose2d(in_ch, mid_ch, kernel_size=2, stride=2)
+        self.deconv = nn.ConvTranspose2d(in_ch, mid_ch, kernel_size=4, stride=2, padding=1)
         conv_in_ch = mid_ch + skip_ch
         self.conv = ConvBlock(conv_in_ch, mid_ch, use_norm=True, use_dropout=use_dropout, downsample=False, use_spectral=False, activation='relu', dropout_rate=dropout_rate)
 
