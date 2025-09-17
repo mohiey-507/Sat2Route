@@ -11,7 +11,7 @@ class ConvBlock(nn.Module):
         use_norm = use_norm and not use_spectral
         bias = not use_norm 
         stride = 2 if downsample else 1
-        act = nn.ReLU(inplace=True) if activation == 'relu' else nn.LeakyReLU(0.2, inplace=True)
+        act = nn.ReLU() if activation == 'relu' else nn.LeakyReLU(0.2)
 
         conv = nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=stride, padding=1, bias=bias)
         if use_spectral:
