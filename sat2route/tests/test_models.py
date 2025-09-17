@@ -30,7 +30,7 @@ class TestUNetGenerator(unittest.TestCase):
         """Test if UNet initializes correctly with default parameters"""
         self.assertIsInstance(self.model, Generator)
         self.assertEqual(len(self.model.contracts), self.depth)
-        self.assertEqual(len(self.model.expands), self.depth)
+        self.assertEqual(len(self.model.decoders), self.depth)
         self.assertEqual(self.model.out_conv.out_channels, self.out_channels)
     
     def test_forward_pass(self):
@@ -54,7 +54,7 @@ class TestDiscriminator(unittest.TestCase):
         self.dataset_config = default_config['dataset']
         self.in_channels = self.disc_config['in_channels']
         self.hidden_channels = self.disc_config['hidden_channels']
-        self.depth = self.disc_config['depth'] - 1
+        self.depth = self.disc_config['depth']
         self.height, self.width = self.dataset_config['target_shape']
         
         self.model = Discriminator(
