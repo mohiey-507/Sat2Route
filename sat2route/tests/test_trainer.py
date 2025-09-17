@@ -15,17 +15,34 @@ from sat2route.config import get_config
 
 class TestTrainer(unittest.TestCase):
     def setUp(self):
-        default_config = get_config()
+        
+        default_config = get_config({
+                'training': {
+                    'device': 'cpu',
+                    'lambda_recon': 100.0,
+                    'epochs': 1,
+                    'lr': 0.0002,
+                    'beta1': 0.5,
+                    'beta2': 0.999,
+                },
+                'dataset': {
+                'root_dir': 'sat2route/datasets/maps',
+                'target_shape': (256, 256),
+                'test_size': 0.2,
+                'seed': 2025
+                }
+        })
+        self.config = default_config
         self.gen_config = default_config['model']['generator']
         self.disc_config = default_config['model']['discriminator']
         self.training_config = default_config['training']
         self.dataloader_config = default_config['dataloader']
         
         # Use smaller batch size
-        self.batch_size = self.dataloader_config['batch_size'] // 4
+        self.batch_size = self.dataloader_config['batch_size']
         
         # Create dataloaders
-        self.train_loader, self.val_loader = get_dataloaders(batch_size=self.batch_size, test_size=0.984)
+        self.train_loader, self.val_loader = get_dataloaders(default_config, batch_size=self.batch_size, test_size=0.984)
         
         # Create model instances
         self.generator = Generator(
@@ -42,16 +59,18 @@ class TestTrainer(unittest.TestCase):
         )
         
         # Create optimizer instances
-        self.gen_optimizer = torch.optim.Adam(
+        self.gen_optimizer = torch.optim.AdamW(
             self.generator.parameters(),
             lr=self.training_config['lr'],
-            betas=(self.training_config['beta1'], self.training_config['beta2'])
+            betas=(self.training_config['beta1'], self.training_config['beta2']),
+            weight_decay=1e-4
         )
         
         self.disc_optimizer = torch.optim.Adam(
             self.discriminator.parameters(),
             lr=self.training_config['lr'],
-            betas=(self.training_config['beta1'], self.training_config['beta2'])
+            betas=(self.training_config['beta1'], self.training_config['beta2']),
+            weight_decay=1e-4
         )
         
         # Create loss function
@@ -63,6 +82,7 @@ class TestTrainer(unittest.TestCase):
         
         # Create trainer instance
         self.trainer = Trainer(
+            config=default_config,
             generator=self.generator,
             discriminator=self.discriminator,
             train_loader=self.train_loader,
