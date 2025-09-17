@@ -47,7 +47,7 @@ class Trainer:
         device: torch.device = None,
         log_name: str = 'trainer',
         checkpoint_dir: str = 'checkpoints',
-        display_step: int = 200,
+        display_step: int = 2000,
     ):
         # Initialize logger
         self.logger = get_logger(log_name)
@@ -57,8 +57,8 @@ class Trainer:
         default_config = config or get_config({
                 'training': {
                     'device': 'mps',
-                    'lambda_recon': 200.0,
-                    'epochs': 2,
+                    'lambda_recon': 100.0,
+                    'epochs': 1,
                     'lr': 0.0002,
                     'beta1': 0.5,
                     'beta2': 0.999,

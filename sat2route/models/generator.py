@@ -31,7 +31,7 @@ class UNet(nn.Module):
             out_ch_decoder = skip_ch
             use_dropout = i < ((depth + 2) // 3)
             decoder_layers = []
-            decoder_layers.append(nn.ReLU(inplace=True))
+            decoder_layers.append(nn.ReLU())
             decoder_layers.append(nn.ConvTranspose2d(current_ch, out_ch_decoder, kernel_size=4, stride=2, padding=1))
             decoder_layers.append(nn.InstanceNorm2d(out_ch_decoder, affine=True))
             if use_dropout:
