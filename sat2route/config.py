@@ -19,13 +19,13 @@ DEFAULT_CONFIG = {
             'in_channels': 3,
             'out_channels': 3,
             'hidden_channels': 64,
-            'depth': 7,
+            'depth': 8,
             'use_dropout': True
         },
         'discriminator': {
             'in_channels': 6,
             'hidden_channels': 64,
-            'depth': 5
+            'depth': 3
         }
     },
     # Training parameters

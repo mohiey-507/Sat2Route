@@ -12,19 +12,25 @@ class Discriminator(nn.Module):
                 use_dropout: bool = False, use_spectral: bool = True, dropout_rate: float = 0.5):
         super().__init__()
         
-        in_conv = nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
+        in_conv = nn.Conv2d(in_ch, hidden_ch, kernel_size=4, stride=2, padding=1)
         if use_spectral:
             in_conv = spectral_norm(in_conv)
         self.in_conv = in_conv
 
+        k_down = min(depth, 2)
         ch = hidden_ch
         self.contracts = nn.ModuleList()
-        for _ in range(depth):
+        for i in range(depth):
             out_ch_val = min(ch * 2, max_ch)
-            self.contracts.append(ContractBlock(ch, out_ch=out_ch_val, use_dropout=use_dropout, use_spectral=use_spectral, activation='leaky', dropout_rate=dropout_rate))
+            down_flag = True if i < k_down else False
+            self.contracts.append(
+                ContractBlock(ch, out_ch=out_ch_val, use_dropout=use_dropout, use_spectral=use_spectral,
+                            downsample=down_flag, activation='leaky', dropout_rate=dropout_rate
+                )
+            )
             ch = out_ch_val
         
-        out_conv = nn.Conv2d(ch, 1, kernel_size=1)
+        out_conv = nn.Conv2d(ch, 1, kernel_size=4, stride=1, padding=1)
         if use_spectral:
             out_conv = spectral_norm(out_conv)
         self.out_conv = out_conv
