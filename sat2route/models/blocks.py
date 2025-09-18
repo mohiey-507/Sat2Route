@@ -18,7 +18,7 @@ class ConvBlock(nn.Module):
             conv = spectral_norm(conv)
         layers.append(conv)
         if use_norm:
-            layers.append(nn.InstanceNorm2d(out_ch, affine=True))
+            layers.append(nn.InstanceNorm2d(out_ch, affine=True, eps=1e-3))
         layers.append(act)
         if use_dropout:
             layers.append(nn.Dropout2d(dropout_rate))
