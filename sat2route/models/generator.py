@@ -5,8 +5,10 @@ from .blocks import ContractBlock
 class UNet(nn.Module):
     def __init__(self, in_ch: int, out_ch: int, hidden_ch: int = 64, depth: int = 8, max_ch: int = 512, input_spatial: int = 256):
         super().__init__()  
-        self.in_conv = nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
-        
+        self.in_conv = nn.Sequential(
+            nn.Conv2d(in_ch, hidden_ch, kernel_size=1),
+            nn.LeakyReLU(0.2)
+    )
         # Contracting path
         ch = hidden_ch
         skip_channels = []
