@@ -5,8 +5,10 @@ from .blocks import ContractBlock
 class UNet(nn.Module):
     def __init__(self, in_ch: int, out_ch: int, hidden_ch: int = 64, depth: int = 8, max_ch: int = 512, input_spatial: int = 256):
         super().__init__()  
-        self.in_conv = nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
-        
+        self.in_conv = nn.Sequential(
+            nn.Conv2d(in_ch, hidden_ch, kernel_size=1),
+            nn.LeakyReLU(0.2)
+        )
         # Contracting path
         ch = hidden_ch
         skip_channels = []
@@ -33,13 +35,16 @@ class UNet(nn.Module):
             decoder_layers = []
             decoder_layers.append(nn.ReLU())
             decoder_layers.append(nn.ConvTranspose2d(current_ch, out_ch_decoder, kernel_size=4, stride=2, padding=1))
-            decoder_layers.append(nn.InstanceNorm2d(out_ch_decoder, affine=True))
+            decoder_layers.append(nn.InstanceNorm2d(out_ch_decoder, affine=True, eps=1e-3))
             if use_dropout:
                 decoder_layers.append(nn.Dropout2d(0.5))
             self.decoders.append(nn.Sequential(*decoder_layers))
             current_ch = out_ch_decoder * 2
 
-        self.out_conv = nn.Conv2d(current_ch, out_ch, kernel_size=1)
+        self.out_conv = nn.Sequential(
+            nn.Conv2d(current_ch, out_ch, kernel_size=1),
+            nn.Tanh()
+        )
 
     def forward(self, x):
         x = self.in_conv(x)

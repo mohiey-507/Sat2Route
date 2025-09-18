@@ -157,7 +157,8 @@ class Trainer:
         Function for visualizing images: Given a tensor of images, number of images, and
         size per image, plots and prints the images in an uniform grid.
         '''
-        image_shifted = image_tensor
+        image_shifted = (image_tensor + 1.0) / 2.0  # Denormalize [-1, 1] to [0, 1]
+        image_shifted = torch.clamp(image_shifted, 0, 1)
         image_unflat = image_shifted.detach().cpu().view(-1, *size)
         image_grid = make_grid(image_unflat[:num_images], nrow=4)
         plt.figure(figsize=(5, 5))
@@ -215,15 +216,14 @@ class Trainer:
                 with torch.no_grad():
                     with autocast(device_type=self.device.type):
                         fake_logits = self.generator(condition)
-                    fake = torch.sigmoid(fake_logits)
-
+                
                 input_dim = condition.shape[1]
                 real_dim = target.shape[1]
                 target_shape = condition.shape[2]
                 print(f"\nStep {self.cur_step}: Visualization of condition (input), target (real), and generated (fake) images")
                 self.show_tensor_images(condition, num_images=4, size=(input_dim, target_shape, target_shape))
                 self.show_tensor_images(target, num_images=4, size=(real_dim, target_shape, target_shape))
-                self.show_tensor_images(fake.to(torch.float32), num_images=4, size=(real_dim, target_shape, target_shape))
+                self.show_tensor_images(fake_logits.to(torch.float32), num_images=4, size=(real_dim, target_shape, target_shape))
 
             self.cur_step += 1
 
@@ -270,10 +270,6 @@ class Trainer:
                 target = target.to(self.device)
                 
                 with autocast(device_type=self.device.type):
-                    # Generate fake images
-                    fake_logits = self.generator(condition)
-                    fake = torch.sigmoid(fake_logits)
-                    
                     # Calculate discriminator loss
                     disc_losses = self.loss_fn(self.discriminator, target, condition, 
                                         mode='discriminator', gen=self.generator)
@@ -355,7 +351,6 @@ class Trainer:
         self.disc_optimizer.load_state_dict(checkpoint['disc_optimizer_state_dict'])
         self.gen_scheduler.load_state_dict(checkpoint['gen_scheduler_state_dict'])
         self.disc_scheduler.load_state_dict(checkpoint['disc_scheduler_state_dict'])
-
         
         self.best_val_loss = checkpoint['val_loss']
         epoch = checkpoint['epoch']
