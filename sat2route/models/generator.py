@@ -8,7 +8,7 @@ class UNet(nn.Module):
         self.in_conv = nn.Sequential(
             nn.Conv2d(in_ch, hidden_ch, kernel_size=1),
             nn.LeakyReLU(0.2)
-    )
+        )
         # Contracting path
         ch = hidden_ch
         skip_channels = []
@@ -41,7 +41,10 @@ class UNet(nn.Module):
             self.decoders.append(nn.Sequential(*decoder_layers))
             current_ch = out_ch_decoder * 2
 
-        self.out_conv = nn.Conv2d(current_ch, out_ch, kernel_size=1)
+        self.out_conv = nn.Sequential(
+            nn.Conv2d(current_ch, out_ch, kernel_size=1),
+            nn.Tanh()
+        )
 
     def forward(self, x):
         x = self.in_conv(x)
